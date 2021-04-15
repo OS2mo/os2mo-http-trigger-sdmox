@@ -12,5 +12,5 @@ opentelemetry-instrumentation-requests
 opentelemetry-instrumentation-fastapi
 
 pika
-os2mo-http-trigger-protocol==0.0.2
+os2mo-http-trigger-protocol==0.0.3
 os2mo-sd-connector==0.0.1
