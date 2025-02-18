@@ -36,7 +36,7 @@ CallableReturnType = TypeVar("CallableReturnType")
 
 
 def async_to_sync(
-    func: Callable[..., Awaitable[CallableReturnType]]
+    func: Callable[..., Awaitable[CallableReturnType]],
 ) -> Callable[..., CallableReturnType]:
     """Decorator to run an async function to completion.
 
@@ -64,7 +64,7 @@ def async_to_sync(
 
 
 def apply(
-    func: Callable[..., CallableReturnType]
+    func: Callable[..., CallableReturnType],
 ) -> Callable[[Tuple], CallableReturnType]:
     """Decorator to apply tuple to function.
 
