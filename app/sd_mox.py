@@ -4,6 +4,7 @@
 
 import asyncio
 import operator
+import os
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from datetime import date, datetime, time
@@ -17,6 +18,7 @@ import pika
 import requests
 import xmltodict
 from os2mo_helpers.mora_helpers import MoraHelper
+from ra_utils.headers import TokenSettings
 from sd_connector import SDConnector
 from structlog import get_logger
 
@@ -720,9 +722,29 @@ class SDMox(SDMoxInterface):
         return addrobjs.pop()["betegnelse"]
 
     def _grouped_addresses(self, details):
+        def get_scope_and_key(address_type):
+            if len(address_type) > 1:
+                return address_type["scope"], address_type["user_key"]
+            # When using the service API, the trigger includes the address_type
+            # object. When using GraphQL, it only includes the uuid.
+            session = requests.Session()
+            session.headers = TokenSettings().get_headers()
+            response = session.post(
+                f"{os.getenv('MORA_URL')}/graphql/v25",
+                json={
+                    "query": "query GetAddressType($uuid: UUID!) {classes(filter: { uuids: [$uuid] }) {objects {current {user_key scope}}}}",
+                    "variables": {"uuid": address_type["uuid"]},
+                    "operationName": "GetAddressType",
+                },
+            )
+            response.raise_for_status()
+            j = response.json()
+            current = j["data"]["classes"]["objects"][0]["current"]
+            return current["scope"], current["user_key"]
+
         keyed, scoped = {}, {}
         for d in details:
-            scope, key = d["address_type"]["scope"], d["address_type"]["user_key"]
+            scope, key = get_scope_and_key(d["address_type"])
             if scope == "DAR":
                 scoped.setdefault(scope, []).append(self._get_dar_address(d["value"]))
             else:
