@@ -2,13 +2,23 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseSettings, HttpUrl, PositiveInt
+from pydantic import AnyHttpUrl, BaseSettings, HttpUrl, PositiveInt, root_validator
+from pydantic.main import BaseModel
 from pydantic.tools import parse_obj_as
+from pydantic.types import SecretStr
 
 from app.pydantic_types import Domain, Port
+
+
+class AMQPTLS(BaseModel):
+    username: str
+    password: SecretStr
+    ca: bytes
+    cert: bytes
+    key: bytes
 
 
 class Settings(BaseSettings):
@@ -25,6 +35,12 @@ class Settings(BaseSettings):
     amqp_port: Port = Port(5672)
     amqp_check_waittime: PositiveInt = PositiveInt(3)
     amqp_check_retries: PositiveInt = PositiveInt(6)
+    # If true, the new AQMP TLS system will be used.
+    # TODO: remove flag once we have seen the new system work. The flag is necessary for
+    #       now, since we would like to manually test the new AMQP system with a CLI
+    #       (or something)
+    amqp_use_tls: bool = False
+    amqp_tls: AMQPTLS | None = None
 
     sd_username: str
     sd_password: str
@@ -34,6 +50,15 @@ class Settings(BaseSettings):
     jaeger_service: str = "SDMox"
     jaeger_hostname: Optional[str] = None
     jaeger_port: Port = Port(6831)
+
+    class Config:
+        env_nested_delimiter = "__"
+
+    @root_validator
+    def ensure_amqp_tls(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if values["amqp_use_tls"] and values["amqp_tls"] is None:
+            raise ValueError("AMQP TLS settings are missing!")
+        return values
 
 
 def get_settings(**overrides) -> Settings:
