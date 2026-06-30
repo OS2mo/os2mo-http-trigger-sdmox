@@ -24,25 +24,20 @@ clickDate = click.DateTime(formats=["%Y-%m-%d"])
     help="TODO",
     show_default=True,
 )
-@click.option("--to-date", type=clickDate, help="TODO")
 @click.option("--overrides", multiple=True)
 @click.pass_context
-def sd_mox_cli(ctx, from_date, to_date, overrides):
+def sd_mox_cli(ctx, from_date, overrides):
     """Tool to make changes in SD."""
 
     from_date = from_date.date()
-    to_date = to_date.date() if to_date else None
-    if to_date and from_date > to_date:
-        raise click.ClickException("from_date must be smaller than to_date")
 
     overrides = dict(override.split("=") for override in overrides)
 
-    sdmox = SDMox(from_date, to_date, overrides=overrides)
+    sdmox = SDMox(from_date, overrides=overrides)
 
     ctx.ensure_object(dict)
     ctx.obj["sdmox"] = sdmox
     ctx.obj["from_date"] = from_date
-    ctx.obj["to_date"] = to_date
 
 
 @sd_mox_cli.command()

@@ -74,7 +74,6 @@ class SDMox(SDMoxInterface):
     def __init__(
         self,
         from_date: Optional[date] = None,
-        to_date: Optional[date] = None,
         overrides: Optional[Dict] = None,
         settings: Optional[Settings] = None,
     ):
