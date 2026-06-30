@@ -5,6 +5,8 @@
 import asyncio
 import operator
 import os
+import ssl
+import tempfile
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from datetime import date, datetime, time
@@ -16,6 +18,7 @@ from uuid import UUID
 
 import pika
 import requests
+import structlog.stdlib
 import xmltodict
 from os2mo_helpers.mora_helpers import MoraHelper
 from ra_utils.headers import TokenSettings
@@ -25,6 +28,8 @@ from structlog import get_logger
 import app.sd_mox_payloads as smp
 from app.config import Settings, get_settings
 from app.util import get_mora_helper
+
+logger = structlog.stdlib.get_logger()
 
 
 class SDMoxError(Exception):
@@ -70,7 +75,6 @@ class SDMox(SDMoxInterface):
     def __init__(
         self,
         from_date: Optional[date] = None,
-        to_date: Optional[date] = None,
         overrides: Optional[Dict] = None,
         settings: Optional[Settings] = None,
     ):
@@ -138,16 +142,51 @@ class SDMox(SDMoxInterface):
 
     def _amqp_connect(self):
         """Establish a connection to the AMQP broker."""
+        logger.info("Connecting to AMQP...")
+
         credentials = pika.PlainCredentials(
             self.settings.amqp_username, self.settings.amqp_password
         )
+        ssl_options = None
+
+        # TODO: remove check when we have seen the new AMQP system work
+        if self.settings.amqp_use_tls:
+            # Use the new AMQP TLS system
+            logger.info("Using AMQP TLS settings")
+
+            tls_settings = self.settings.amqp_tls
+            credentials = pika.PlainCredentials(
+                tls_settings.username, tls_settings.password.get_secret_value()
+            )
+
+            context = ssl.create_default_context(cadata=tls_settings.ca.decode())
+            with tempfile.TemporaryFile() as cert_file:
+                cert_file.write(tls_settings.cert)
+                with tempfile.TemporaryFile() as key_file:
+                    key_file.write(tls_settings.key)
+
+                    context.load_cert_chain(
+                        certfile=cert_file.name,
+                        keyfile=key_file.name,
+                    )
+
+            ssl_options = pika.SSLOptions(
+                context=context, server_hostname=self.settings.amqp_host
+            )
+
         parameters = pika.ConnectionParameters(
             host=self.settings.amqp_host,
             port=self.settings.amqp_port,
             virtual_host=self.settings.amqp_virtual_host,
             credentials=credentials,
+            ssl_options=ssl_options,
         )
-        connection = pika.BlockingConnection(parameters)
+
+        try:
+            connection = pika.BlockingConnection(parameters)
+        except Exception as error:
+            logger.error("Failed to establish AMQP connection", error=error)
+            raise
         self.channel = connection.channel()
         result = self.channel.queue_declare("", exclusive=True)
         self.callback_queue = result.method.queue
@@ -155,6 +194,7 @@ class SDMox(SDMoxInterface):
             queue=self.callback_queue,
             on_message_callback=self._on_response,
         )
+        logger.info(f"AMQP connection established")
 
     def _on_response(self, ch, method, props, body):
         # We never expect a result from SD!
