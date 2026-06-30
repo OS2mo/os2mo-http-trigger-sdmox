@@ -6,6 +6,7 @@ import asyncio
 import operator
 import os
 import ssl
+import tempfile
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from datetime import date, datetime, time
@@ -158,27 +159,21 @@ class SDMox(SDMoxInterface):
                 tls_settings.username, tls_settings.password.get_secret_value()
             )
 
-            with TemporaryDirectory() as tmp_dir:
-                amqp_tls_dir = Path(tmp_dir)
-                generate_amqp_tls_files(
-                    ca=tls_settings.ca,
-                    cert=tls_settings.cert,
-                    cert_key=tls_settings.key,
-                    cert_dir=amqp_tls_dir,
-                )
+            context = ssl.create_default_context(cadata=tls_settings.ca.decode())
+            with tempfile.TemporaryFile() as cert_file:
+                cert_file.write(tls_settings.cert)
+                with tempfile.TemporaryFile() as key_file:
+                    key_file.write(tls_settings.key)
 
-                context = ssl.create_default_context(
-                    cafile=str(amqp_tls_dir / "ca.pem")
-                )
-                context.load_cert_chain(
-                    certfile=str(amqp_tls_dir / "client.pem"),
-                    keyfile=str(amqp_tls_dir / "client.key"),
-                )
+                    context.load_cert_chain(
+                        certfile=cert_file.name,
+                        keyfile=key_file.name,
+                    )
 
-                ssl_options = pika.SSLOptions(
-                    context=context,
-                    server_hostname=self.settings.amqp_host
-                )
+            ssl_options = pika.SSLOptions(
+                context=context,
+                server_hostname=self.settings.amqp_host
+            )
 
         parameters = pika.ConnectionParameters(
             host=self.settings.amqp_host,
