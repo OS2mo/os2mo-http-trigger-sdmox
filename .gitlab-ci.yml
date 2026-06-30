@@ -15,8 +15,6 @@
 stages:
   - sync
   - lint
-  # build stage is not blocked by lint stage, as we have a DAG:
-  # https://docs.gitlab.com/ee/ci/directed_acyclic_graph/index.html
   - build
   - test
   - release
@@ -28,6 +26,7 @@ variables:
   RELEASE_REGISTRY_IMAGE: index.docker.io/magentaaps/os2mo-http-trigger-sdmox
 
   IMAGE_SHA: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+
 
 # Conditions
 #############
@@ -53,9 +52,10 @@ workflow:
 include:
   - project: labs/salt-automation
     file:
-      - gitlab-ci-templates/common/no-interrupt-meta.v1.yml
-      - gitlab-ci-templates/common/docker-release.v1.yml
-      - gitlab-ci-templates/common/conventional-commits.v1.yml
+      - /gitlab-ci-templates/common/no-interrupt-meta.v1.yml
+      - /gitlab-ci-templates/common/conventional-commits.v1.yml
+      - /gitlab-ci-templates/common/docker-build.v1.yml
+      - /gitlab-ci-templates/common/docker-release.v1.yml
 
 
 # Lint stage
@@ -82,15 +82,6 @@ Lint Python:
     - python -m black --diff --check app/
     - python -m isort --profile black --diff --check-only app/
 
-Lint Dockerfiles:
-  <<: *lint-default
-  image: hadolint/hadolint:latest-debian
-  before_script:
-    - apt-get -y update
-    - apt-get -y install --no-install-recommends git
-  script:
-    - git ls-files --exclude='Dockerfile*' --ignored | xargs --max-lines=1 hadolint
-
 REUSE compliance:
   <<: *lint-default
   image:
@@ -100,39 +91,14 @@ REUSE compliance:
     - reuse lint
 
 
-# Build stage
-#############
-
-Build Image:
-  stage: build
-  needs: []
-  image:
-    # We use kaniko v0.16.0 as both v0.17.0, v0.17.1, v0.18.0 and v0.19.0 contains fatal bugs.
-    name: gcr.io/kaniko-project/executor:debug-v0.16.0
-    entrypoint: [""]
-  script:
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor
-      --cache
-      --context=$CI_PROJECT_DIR
-      --dockerfile=$CI_PROJECT_DIR/Dockerfile
-      --destination=${IMAGE_SHA}
-
-
 # Test stage
 ############
 
-.test-default: &test-default
-  stage: test
-  needs: ["Build Image"]
-  services: []
-  before_script:
-    - pip3 install -r requirements/test.txt
-
 Unit-test:
-  <<: *test-default
   image:
     name: ${IMAGE_SHA}
+  before_script:
+    - pip3 install -r requirements/test.txt
   script:
     - pytest
       --cov=app
@@ -149,16 +115,3 @@ Unit-test:
       - $CI_PROJECT_DIR/coverage-html
     reports:
       junit: $CI_PROJECT_DIR/junit.xml
-
-
-# Release stage
-###############
-
-.release-default: &release-default
-  stage: release
-  needs: ["Unit-test"]
-  image: alpine:3.13
-  variables:
-    GIT_STRATEGY: none # We do not need the source code
-  before_script:
-    - apk add skopeo=1.2.1-r0
