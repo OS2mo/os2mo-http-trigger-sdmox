@@ -78,5 +78,18 @@ async def set_name(ctx, unit_uuid, new_unit_name, dry_run):
     )
 
 
+@sd_mox_cli.command()
+@click.pass_context
+async def test_amqp_connection(ctx):
+    """
+    Test the AMQP connection.
+
+    To the new SD AMQP TLS system, run this CLI with
+    $ AMQP_USE_TLS=true python -m app.cli test_amqp_connection
+    """
+    mox = ctx.obj["sdmox"]
+    mox._amqp_connect()
+
+
 if __name__ == "__main__":
     sd_mox_cli()
