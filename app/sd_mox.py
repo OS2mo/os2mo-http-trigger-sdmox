@@ -171,8 +171,7 @@ class SDMox(SDMoxInterface):
                     )
 
             ssl_options = pika.SSLOptions(
-                context=context,
-                server_hostname=self.settings.amqp_host
+                context=context, server_hostname=self.settings.amqp_host
             )
 
         parameters = pika.ConnectionParameters(

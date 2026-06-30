@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import AnyHttpUrl, BaseSettings, HttpUrl, PositiveInt, root_validator
