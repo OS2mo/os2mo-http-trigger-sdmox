@@ -19,9 +19,9 @@ sys.path.insert(0, "/")
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
-from os2mo_fastapi_utils.tracing import setup_instrumentation, setup_logging
 from structlog.processors import KeyValueRenderer
 
 from app.config import get_settings
@@ -47,6 +47,7 @@ tags_metadata: List[Dict[str, Any]] = [
         },
     },
 ]
+
 app = FastAPI(
     title="SDMox",
     description="API to make changes in SD.",
@@ -143,8 +144,6 @@ async def requests_exception_handler(request: Request, exc: RequestException):
 app.include_router(api.router, tags=["API"])
 app.include_router(trigger_api.router, prefix="/triggers", tags=["Trigger API"])
 
-app = setup_instrumentation(app)
-
 from structlog.contextvars import merge_contextvars
 
-setup_logging(processors=[merge_contextvars, KeyValueRenderer()])
+structlog.configure(processors=[merge_contextvars, KeyValueRenderer()])
