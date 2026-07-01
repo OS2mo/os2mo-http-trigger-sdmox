@@ -144,6 +144,9 @@ class SDMox(SDMoxInterface):
         """Establish a connection to the AMQP broker."""
         logger.info("Connecting to AMQP...")
 
+        host = self.settings.amqp_host
+        port = self.settings.amqp_port
+        virtual_host = self.settings.amqp_virtual_host
         credentials = pika.PlainCredentials(
             self.settings.amqp_username, self.settings.amqp_password
         )
@@ -155,6 +158,10 @@ class SDMox(SDMoxInterface):
             logger.info("Using AMQP TLS settings")
 
             tls_settings = self.settings.amqp_tls
+
+            host = tls_settings.host
+            port = tls_settings.port
+            virtual_host = tls_settings.virtual_host
             credentials = pika.PlainCredentials(
                 tls_settings.username, tls_settings.password.get_secret_value()
             )
@@ -175,9 +182,9 @@ class SDMox(SDMoxInterface):
             )
 
         parameters = pika.ConnectionParameters(
-            host=self.settings.amqp_host,
-            port=self.settings.amqp_port,
-            virtual_host=self.settings.amqp_virtual_host,
+            host=host,
+            port=port,
+            virtual_host=virtual_host,
             credentials=credentials,
             ssl_options=ssl_options,
         )
