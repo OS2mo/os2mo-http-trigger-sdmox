@@ -14,8 +14,8 @@ from app.pydantic_types import Domain, Port
 
 
 class AMQPTLS(BaseModel):
-    host: Domain
-    port: Port
+    host: str
+    port: int
     virtual_host: str
     username: str
     password: SecretStr

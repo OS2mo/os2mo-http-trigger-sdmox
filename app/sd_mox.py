@@ -167,19 +167,19 @@ class SDMox(SDMoxInterface):
             )
 
             context = ssl.create_default_context(cadata=tls_settings.ca.decode())
-            with tempfile.TemporaryFile() as cert_file:
+            with tempfile.NamedTemporaryFile() as cert_file:
                 cert_file.write(tls_settings.cert)
-                with tempfile.TemporaryFile() as key_file:
+                cert_file.flush()
+                with tempfile.NamedTemporaryFile() as key_file:
                     key_file.write(tls_settings.key)
+                    key_file.flush()
 
                     context.load_cert_chain(
                         certfile=cert_file.name,
                         keyfile=key_file.name,
                     )
 
-            ssl_options = pika.SSLOptions(
-                context=context, server_hostname=self.settings.amqp_host
-            )
+            ssl_options = pika.SSLOptions(context=context, server_hostname=host)
 
         parameters = pika.ConnectionParameters(
             host=host,

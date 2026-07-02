@@ -8,5 +8,7 @@ os2mo-data-import==5.4.3
 
 requests
 more-itertools
+fastapi==0.115.12
+pydantic==1.10.26
 os2mo-http-trigger-protocol==0.0.3
 os2mo-sd-connector==0.0.1
