@@ -80,7 +80,7 @@ async def set_name(ctx, unit_uuid, new_unit_name, dry_run):
 
 @sd_mox_cli.command()
 @click.pass_context
-async def test_amqp_connection(ctx):
+def test_amqp_connection(ctx):
     """
     Test the AMQP connection.
 
