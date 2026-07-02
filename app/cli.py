@@ -88,7 +88,16 @@ def test_amqp_connection(ctx):
     $ AMQP_USE_TLS=true python -m app.cli test_amqp_connection
     """
     mox = ctx.obj["sdmox"]
-    mox._amqp_connect()
+
+    payload = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Event>
+            <Type>test</Type>
+            <Source>python-client</Source>
+        </Event>
+    """
+
+    mox._call(payload)
 
 
 if __name__ == "__main__":

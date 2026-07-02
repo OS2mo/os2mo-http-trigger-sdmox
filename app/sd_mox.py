@@ -179,7 +179,9 @@ class SDMox(SDMoxInterface):
                         keyfile=key_file.name,
                     )
 
-            ssl_options = pika.SSLOptions(context=context, server_hostname=host)
+            ssl_options = pika.SSLOptions(
+                context=context, server_hostname=tls_settings.server
+            )
 
         parameters = pika.ConnectionParameters(
             host=host,
@@ -195,13 +197,16 @@ class SDMox(SDMoxInterface):
             logger.error("Failed to establish AMQP connection", error=error)
             raise
         self.channel = connection.channel()
-        result = self.channel.queue_declare("", exclusive=True)
-        self.callback_queue = result.method.queue
-        self.channel.basic_consume(
-            queue=self.callback_queue,
-            on_message_callback=self._on_response,
-        )
+
         logger.info(f"AMQP connection established")
+
+        if not self.settings.amqp_use_tls:
+            result = self.channel.queue_declare("", exclusive=True)
+            self.callback_queue = result.method.queue
+            self.channel.basic_consume(
+                queue=self.callback_queue,
+                on_message_callback=self._on_response,
+            )
 
     def _on_response(self, ch, method, props, body):
         # We never expect a result from SD!
@@ -224,11 +229,30 @@ class SDMox(SDMoxInterface):
         logger.info("Establishing connection to SD-Mox AMQP")
         self._amqp_connect()
 
+        if not self.settings.amqp_use_tls:
+            basic_properties = {
+                "reply_to": self.callback_queue,
+            }
+        else:
+            basic_properties = {
+                "content_type": "application/xml",
+                "content_encoding": "utf-8",
+                # delivery_mode=1: Transient (default). The message lives only in
+                #                  memory. If the broker restarts, it's gone.
+                # delivery_mode=2: Persistent. RabbitMQ writes the message to disk as
+                #                  well as keeping it in memory.
+                "delivery_mode": 2,
+            }
+
         logger.info("Calling SD-Mox AMQP")
         self.channel.basic_publish(
-            exchange=self.exchange_name,
+            exchange=(
+                self.exchange_name
+                if not self.settings.amqp_use_tls
+                else self.settings.amqp_tls.exchange
+            ),
             routing_key="#",
-            properties=pika.BasicProperties(reply_to=self.callback_queue),
+            properties=pika.BasicProperties(**basic_properties),
             body=xml,
         )
 
