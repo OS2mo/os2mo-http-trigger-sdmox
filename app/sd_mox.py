@@ -93,9 +93,6 @@ class SDMox(SDMoxInterface):
         self.sd_levels: OrderedDictType[str, str] = self._read_ou_levelkeys()
         self.level_by_uuid: Dict[str, str] = {v: k for k, v in self.sd_levels.items()}
 
-        # AMQP exchange
-        self.exchange_name: str = "org-struktur-changes-topic"
-
         if from_date:
             self._update_virkning(from_date)
 
@@ -144,49 +141,33 @@ class SDMox(SDMoxInterface):
         """Establish a connection to the AMQP broker."""
         logger.info("Connecting to AMQP...")
 
-        host = self.settings.amqp_host
-        port = self.settings.amqp_port
-        virtual_host = self.settings.amqp_virtual_host
+        tls_settings = self.settings.amqp_tls
+
         credentials = pika.PlainCredentials(
-            self.settings.amqp_username, self.settings.amqp_password
+            tls_settings.username, tls_settings.password.get_secret_value()
         )
-        ssl_options = None
 
-        # TODO: remove check when we have seen the new AMQP system work
-        if self.settings.amqp_use_tls:
-            # Use the new AMQP TLS system
-            logger.info("Using AMQP TLS settings")
+        context = ssl.create_default_context(cadata=tls_settings.ca.decode())
+        with tempfile.NamedTemporaryFile() as cert_file:
+            cert_file.write(tls_settings.cert)
+            cert_file.flush()
+            with tempfile.NamedTemporaryFile() as key_file:
+                key_file.write(tls_settings.key)
+                key_file.flush()
 
-            tls_settings = self.settings.amqp_tls
+                context.load_cert_chain(
+                    certfile=cert_file.name,
+                    keyfile=key_file.name,
+                )
 
-            host = tls_settings.host
-            port = tls_settings.port
-            virtual_host = tls_settings.virtual_host
-            credentials = pika.PlainCredentials(
-                tls_settings.username, tls_settings.password.get_secret_value()
-            )
-
-            context = ssl.create_default_context(cadata=tls_settings.ca.decode())
-            with tempfile.NamedTemporaryFile() as cert_file:
-                cert_file.write(tls_settings.cert)
-                cert_file.flush()
-                with tempfile.NamedTemporaryFile() as key_file:
-                    key_file.write(tls_settings.key)
-                    key_file.flush()
-
-                    context.load_cert_chain(
-                        certfile=cert_file.name,
-                        keyfile=key_file.name,
-                    )
-
-            ssl_options = pika.SSLOptions(
-                context=context, server_hostname=tls_settings.server
-            )
+        ssl_options = pika.SSLOptions(
+            context=context, server_hostname=tls_settings.server
+        )
 
         parameters = pika.ConnectionParameters(
-            host=host,
-            port=port,
-            virtual_host=virtual_host,
+            host=tls_settings.host,
+            port=tls_settings.port,
+            virtual_host=tls_settings.virtual_host,
             credentials=credentials,
             ssl_options=ssl_options,
         )
@@ -199,14 +180,6 @@ class SDMox(SDMoxInterface):
         self.channel = connection.channel()
 
         logger.info(f"AMQP connection established")
-
-        if not self.settings.amqp_use_tls:
-            result = self.channel.queue_declare("", exclusive=True)
-            self.callback_queue = result.method.queue
-            self.channel.basic_consume(
-                queue=self.callback_queue,
-                on_message_callback=self._on_response,
-            )
 
     def _on_response(self, ch, method, props, body):
         # We never expect a result from SD!
@@ -229,30 +202,19 @@ class SDMox(SDMoxInterface):
         logger.info("Establishing connection to SD-Mox AMQP")
         self._amqp_connect()
 
-        if not self.settings.amqp_use_tls:
-            basic_properties = {
-                "reply_to": self.callback_queue,
-            }
-        else:
-            basic_properties = {
-                "content_type": "application/xml",
-                "content_encoding": "utf-8",
+        logger.info("Calling SD-Mox AMQP")
+        self.channel.basic_publish(
+            exchange=self.settings.amqp_tls.exchange,
+            routing_key="#",
+            properties=pika.BasicProperties(
+                content_type="application/xml",
+                content_encoding="utf-8",
                 # delivery_mode=1: Transient (default). The message lives only in
                 #                  memory. If the broker restarts, it's gone.
                 # delivery_mode=2: Persistent. RabbitMQ writes the message to disk as
                 #                  well as keeping it in memory.
-                "delivery_mode": 2,
-            }
-
-        logger.info("Calling SD-Mox AMQP")
-        self.channel.basic_publish(
-            exchange=(
-                self.exchange_name
-                if not self.settings.amqp_use_tls
-                else self.settings.amqp_tls.exchange
+                delivery_mode=2,
             ),
-            routing_key="#",
-            properties=pika.BasicProperties(**basic_properties),
             body=xml,
         )
 
